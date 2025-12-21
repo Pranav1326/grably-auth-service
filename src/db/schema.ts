@@ -14,6 +14,19 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const shopKeeper = pgTable('shop_keeper', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  password: varchar('password', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 20 }),
+  avatar: text('avatar'),
+  isVerified: boolean('is_verified').default(false).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const admin = pgTable('admin', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: varchar('email', { length: 255 }).notNull().unique(),
@@ -61,6 +74,8 @@ export const verificationTokens = pgTable('verification_tokens', {
 export const addresses = pgTable('addresses', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  label: varchar('label', { length: 100 }),
   street: varchar('street', { length: 255 }).notNull(),
   landmark: varchar('landmark', { length: 255 }),
   city: varchar('city', { length: 100 }).notNull(),
@@ -75,6 +90,8 @@ export const addresses = pgTable('addresses', {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type ShopKeeper = typeof shopKeeper.$inferSelect;
+export type NewShopKeeper = typeof shopKeeper.$inferInsert;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
 export type Admin = typeof admin.$inferSelect;
