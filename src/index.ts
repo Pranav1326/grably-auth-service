@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 import { env } from './config/env';
 import authRoutes from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
 import { errorResponse } from './utils/helpers/responseFormatter';
 
 const app = new Hono();
@@ -11,10 +12,10 @@ const app = new Hono();
 // Middleware
 app.use('*', logger());
 app.use('*', prettyJSON());
-// app.use(
-//   '*',
-//   cors()
-// );
+app.use(
+  '*',
+  cors()
+);
 // app.use(
 //   '*',
 //   cors({
@@ -43,6 +44,8 @@ app.get('/health', (c) => {
 
 // API routes
 app.route('/api/auth', authRoutes);
+
+app.route('/api/admin', adminRoutes);
 
 // 404 handler
 app.notFound((c) => {
