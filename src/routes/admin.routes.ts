@@ -3,8 +3,19 @@ import {
   getProfile,
   login,
   register,
+  getUsers,
+  getUser,
+  updateUser,
+  deleteUser,
+  toggleUserStatus,
+  getShopkeepers,
+  getShopkeeper,
+  updateShopkeeper,
+  deleteShopkeeper,
+  toggleShopkeeperStatus,
 } from '../controllers/admin.controller';
 import { authMiddleware } from '../middleware/auth';
+import { serviceAuthMiddleware } from '../middleware/serviceAuth';
 
 const adminRoutes = new Hono();
 
@@ -14,7 +25,22 @@ adminRoutes.post('/login', login);
 // adminRoutes.post('/refresh', refreshAccessToken);
 // adminRoutes.post('/logout', logout);
 
-// Protected routes
+// Protected routes (for admin dashboard)
 adminRoutes.get('/profile', authMiddleware, getProfile);
+
+// Service-to-service endpoints (protected by service token)
+// User management
+adminRoutes.get('/users', serviceAuthMiddleware, getUsers);
+adminRoutes.get('/users/:id', serviceAuthMiddleware, getUser);
+adminRoutes.put('/users/:id', serviceAuthMiddleware, updateUser);
+adminRoutes.delete('/users/:id', serviceAuthMiddleware, deleteUser);
+adminRoutes.patch('/users/:id/toggle-status', serviceAuthMiddleware, toggleUserStatus);
+
+// Shopkeeper management
+adminRoutes.get('/shopkeepers', serviceAuthMiddleware, getShopkeepers);
+adminRoutes.get('/shopkeepers/:id', serviceAuthMiddleware, getShopkeeper);
+adminRoutes.put('/shopkeepers/:id', serviceAuthMiddleware, updateShopkeeper);
+adminRoutes.delete('/shopkeepers/:id', serviceAuthMiddleware, deleteShopkeeper);
+adminRoutes.patch('/shopkeepers/:id/toggle-status', serviceAuthMiddleware, toggleShopkeeperStatus);
 
 export default adminRoutes;

@@ -1,8 +1,8 @@
 import type { Context } from "hono";
 import { loginSchema } from "../schemas/auth";
 import { db } from "../db";
-import { refreshTokens, admin } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { refreshTokens, admin, users, shopKeeper } from "../db/schema";
+import { eq, desc, or, ilike, sql } from "drizzle-orm";
 import { comparePassword, generateAccessToken, generateRefreshToken, hashPassword } from "../utils/auth";
 import z from "zod";
 
@@ -77,9 +77,9 @@ export const login = async (c: Context) => {
     }
 
     // Generate tokens
-    const accessToken = generateAccessToken(user.id, user.email);
-    const refreshToken = generateRefreshToken(user.id, user.email);
-
+    const accessToken = await generateAccessToken(user.id, user.email);
+    const refreshToken = await generateRefreshToken(user.id, user.email);
+    
     // Store refresh token
     // const expiresAt = new Date();
     // expiresAt.setDate(expiresAt.getDate() + 30);
@@ -129,5 +129,339 @@ export const getProfile = async (c: Context) => {
   } catch (error) {
     console.error('Get profile error:', error);
     return c.json({ error: 'Internal server error' }, 500);
+  }
+};
+
+// ============ User Management (Service-to-Service) ============
+
+export const getUsers = async (c: Context) => {
+  try {
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '10');
+    const search = c.req.query('search') || '';
+
+    const offset = (page - 1) * limit;
+
+    let query = db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        phone: users.phone,
+        avatar: users.avatar,
+        isVerified: users.isVerified,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Add search filter if provided
+    if (search) {
+      query = query.where(
+        or(
+          ilike(users.name, `%${search}%`),
+          ilike(users.email, `%${search}%`)
+        )
+      ) as any;
+    }
+
+    const userList = await query;
+    
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users);
+
+    return c.json({
+      users: userList,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    return c.json({ error: 'Failed to fetch users' }, 500);
+  }
+};
+
+export const getUser = async (c: Context) => {
+  try {
+    const userId = c.req.param('id');
+    
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        phone: users.phone,
+        avatar: users.avatar,
+        isVerified: users.isVerified,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    return c.json({ user });
+  } catch (error) {
+    console.error('Get user error:', error);
+    return c.json({ error: 'Failed to fetch user' }, 500);
+  }
+};
+
+export const updateUser = async (c: Context) => {
+  try {
+    const userId = c.req.param('id');
+    const body = await c.req.json();
+
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (body.name) updateData.name = body.name;
+    if (body.phone !== undefined) updateData.phone = body.phone;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!updatedUser) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    return c.json({ message: 'User updated successfully', user: userWithoutPassword });
+  } catch (error) {
+    console.error('Update user error:', error);
+    return c.json({ error: 'Failed to update user' }, 500);
+  }
+};
+
+export const deleteUser = async (c: Context) => {
+  try {
+    const userId = c.req.param('id');
+
+    await db.delete(users).where(eq(users.id, userId));
+
+    return c.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return c.json({ error: 'Failed to delete user' }, 500);
+  }
+};
+
+export const toggleUserStatus = async (c: Context) => {
+  try {
+    const userId = c.req.param('id');
+
+    const [user] = await db
+      .select({ isActive: users.isActive })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ 
+        isActive: !user.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    return c.json({ 
+      message: 'User status updated successfully', 
+      user: userWithoutPassword 
+    });
+  } catch (error) {
+    console.error('Toggle user status error:', error);
+    return c.json({ error: 'Failed to toggle user status' }, 500);
+  }
+};
+
+// ============ Shopkeeper Management (Service-to-Service) ============
+
+export const getShopkeepers = async (c: Context) => {
+  try {
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '10');
+    const search = c.req.query('search') || '';
+
+    const offset = (page - 1) * limit;
+
+    let query = db
+      .select({
+        id: shopKeeper.id,
+        email: shopKeeper.email,
+        name: shopKeeper.name,
+        phone: shopKeeper.phone,
+        avatar: shopKeeper.avatar,
+        isVerified: shopKeeper.isVerified,
+        isActive: shopKeeper.isActive,
+        createdAt: shopKeeper.createdAt,
+      })
+      .from(shopKeeper)
+      .orderBy(desc(shopKeeper.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Add search filter if provided
+    if (search) {
+      query = query.where(
+        or(
+          ilike(shopKeeper.name, `%${search}%`),
+          ilike(shopKeeper.email, `%${search}%`)
+        )
+      ) as any;
+    }
+
+    const shopkeeperList = await query;
+    
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(shopKeeper);
+
+    return c.json({
+      shopkeepers: shopkeeperList,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error('Get shopkeepers error:', error);
+    return c.json({ error: 'Failed to fetch shopkeepers' }, 500);
+  }
+};
+
+export const getShopkeeper = async (c: Context) => {
+  try {
+    const shopkeeperId = c.req.param('id');
+    
+    const [shopkeeper] = await db
+      .select({
+        id: shopKeeper.id,
+        email: shopKeeper.email,
+        name: shopKeeper.name,
+        phone: shopKeeper.phone,
+        avatar: shopKeeper.avatar,
+        isVerified: shopKeeper.isVerified,
+        isActive: shopKeeper.isActive,
+        createdAt: shopKeeper.createdAt,
+      })
+      .from(shopKeeper)
+      .where(eq(shopKeeper.id, shopkeeperId))
+      .limit(1);
+
+    if (!shopkeeper) {
+      return c.json({ error: 'Shopkeeper not found' }, 404);
+    }
+
+    return c.json({ shopkeeper });
+  } catch (error) {
+    console.error('Get shopkeeper error:', error);
+    return c.json({ error: 'Failed to fetch shopkeeper' }, 500);
+  }
+};
+
+export const updateShopkeeper = async (c: Context) => {
+  try {
+    const shopkeeperId = c.req.param('id');
+    const body = await c.req.json();
+
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (body.name) updateData.name = body.name;
+    if (body.phone !== undefined) updateData.phone = body.phone;
+
+    const [updatedShopkeeper] = await db
+      .update(shopKeeper)
+      .set(updateData)
+      .where(eq(shopKeeper.id, shopkeeperId))
+      .returning();
+
+    if (!updatedShopkeeper) {
+      return c.json({ error: 'Shopkeeper not found' }, 404);
+    }
+
+    const { password, ...shopkeeperWithoutPassword } = updatedShopkeeper;
+
+    return c.json({ message: 'Shopkeeper updated successfully', shopkeeper: shopkeeperWithoutPassword });
+  } catch (error) {
+    console.error('Update shopkeeper error:', error);
+    return c.json({ error: 'Failed to update shopkeeper' }, 500);
+  }
+};
+
+export const deleteShopkeeper = async (c: Context) => {
+  try {
+    const shopkeeperId = c.req.param('id');
+
+    await db.delete(shopKeeper).where(eq(shopKeeper.id, shopkeeperId));
+
+    return c.json({ message: 'Shopkeeper deleted successfully' });
+  } catch (error) {
+    console.error('Delete shopkeeper error:', error);
+    return c.json({ error: 'Failed to delete shopkeeper' }, 500);
+  }
+};
+
+export const toggleShopkeeperStatus = async (c: Context) => {
+  try {
+    const shopkeeperId = c.req.param('id');
+
+    const [shopkeeper] = await db
+      .select({ isActive: shopKeeper.isActive })
+      .from(shopKeeper)
+      .where(eq(shopKeeper.id, shopkeeperId))
+      .limit(1);
+
+    if (!shopkeeper) {
+      return c.json({ error: 'Shopkeeper not found' }, 404);
+    }
+
+    const [updatedShopkeeper] = await db
+      .update(shopKeeper)
+      .set({ 
+        isActive: !shopkeeper.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(shopKeeper.id, shopkeeperId))
+      .returning();
+
+    const { password, ...shopkeeperWithoutPassword } = updatedShopkeeper;
+
+    return c.json({ 
+      message: 'Shopkeeper status updated successfully', 
+      shopkeeper: shopkeeperWithoutPassword 
+    });
+  } catch (error) {
+    console.error('Toggle shopkeeper status error:', error);
+    return c.json({ error: 'Failed to toggle shopkeeper status' }, 500);
   }
 };
