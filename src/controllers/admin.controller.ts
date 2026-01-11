@@ -190,6 +190,42 @@ export const getUsers = async (c: Context) => {
   }
 };
 
+export const createUser = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    // You can add validation here if needed
+
+    // Check if user already exists
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, body.email))
+      .limit(1);
+
+    if (existingUser) {
+      return c.json({ error: 'User already exists' }, 409);
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(body.password);
+    
+    // Create new user
+    const newUser = await db.insert(users).values({
+      name: body.name,
+      email: body.email,
+      password: hashedPassword,
+      phone: body.phone,
+    }).returning();
+
+    const { password, ...userWithoutPassword } = newUser[0];
+
+    return c.json({ message: 'User created successfully', user: userWithoutPassword }, 201);
+  } catch (error) {
+    console.error('Create user error:', error);
+    return c.json({ error: 'Failed to create user' }, 500);
+  }
+};
+
 export const getUser = async (c: Context) => {
   try {
     const userId = c.req.param('id');
@@ -357,6 +393,42 @@ export const getShopkeepers = async (c: Context) => {
   }
 };
 
+export const createShopkeeper = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    // You can add validation here if needed
+
+    // Check if shopkeeper already exists
+    const [existingShopkeeper] = await db
+      .select()
+      .from(shopKeeper)
+      .where(eq(shopKeeper.email, body.email))
+      .limit(1);
+
+    if (existingShopkeeper) {
+      return c.json({ error: 'Shopkeeper already exists' }, 409);
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(body.password);
+    
+    // Create new shopkeeper
+    const newShopkeeper = await db.insert(shopKeeper).values({
+      name: body.name,
+      email: body.email,
+      password: hashedPassword,
+      phone: body.phone,
+    }).returning();
+
+    const { password, ...shopkeeperWithoutPassword } = newShopkeeper[0];
+
+    return c.json({ message: 'Shopkeeper created successfully', shopkeeper: shopkeeperWithoutPassword }, 201);
+  } catch (error) {
+    console.error('Create shopkeeper error:', error);
+    return c.json({ error: 'Failed to create shopkeeper' }, 500);
+  }
+}
+
 export const getShopkeeper = async (c: Context) => {
   try {
     const shopkeeperId = c.req.param('id');
@@ -463,5 +535,195 @@ export const toggleShopkeeperStatus = async (c: Context) => {
   } catch (error) {
     console.error('Toggle shopkeeper status error:', error);
     return c.json({ error: 'Failed to toggle shopkeeper status' }, 500);
+  }
+};
+
+export const getAdmins = async (c: Context) => {
+  try {
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = parseInt(c.req.query('limit') || '10');
+    const search = c.req.query('search') || '';
+
+    const offset = (page - 1) * limit;
+
+    let query = db
+      .select({
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        createdAt: admin.createdAt,
+        isActive: admin.isActive,
+      })
+      .from(admin)
+      .orderBy(desc(admin.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    // Add search filter if provided
+    if (search) {
+      query = query.where(
+        or(
+          ilike(admin.name, `%${search}%`),
+          ilike(admin.email, `%${search}%`)
+        )
+      ) as any;
+    }
+
+    const adminList = await query;
+    
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(admin);
+
+    return c.json({
+      admins: adminList,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages: Math.ceil(count / limit),
+      },
+    });
+  } catch (error) {
+    console.error('Get admins error:', error);
+    return c.json({ error: 'Failed to fetch admins' }, 500);
+  }
+}
+
+export const createAdmin = async (c: Context) => {
+  try {
+    const body = await c.req.json();
+    // You can add validation here if needed
+
+    // Check if admin already exists
+    const [existingAdmin] = await db
+      .select()
+      .from(admin)
+      .where(eq(admin.email, body.email))
+      .limit(1);
+
+    if (existingAdmin) {
+      return c.json({ error: 'Admin already exists' }, 409);
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(body.password);
+    
+    // Create new admin
+    const newAdmin = await db.insert(admin).values({
+      name: body.name,
+      email: body.email,
+      password: hashedPassword,
+    }).returning();
+
+    return c.json({ message: 'Admin created successfully', adminId: newAdmin[0].id }, 201);
+  } catch (error) {
+    console.error('Create admin error:', error);
+    return c.json({ error: 'Failed to create admin' }, 500);
+  }
+};
+
+export const getAdmin = async (c: Context) => {
+  try {
+    const adminId = c.req.param('id');
+    
+    const [adminUser] = await db
+      .select({
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        createdAt: admin.createdAt,
+      })
+      .from(admin)
+      .where(eq(admin.id, adminId))
+      .limit(1);
+
+    if (!adminUser) {
+      return c.json({ error: 'Admin not found' }, 404);
+    }
+
+    return c.json({ admin: adminUser });
+  } catch (error) {
+    console.error('Get admin error:', error);
+    return c.json({ error: 'Failed to fetch admin' }, 500);
+  }
+}
+
+export const updateAdmin = async (c: Context) => {
+  try {
+    const adminId = c.req.param('id');
+    const body = await c.req.json();
+
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (body.name) updateData.name = body.name;
+
+    const [updatedAdmin] = await db
+      .update(admin)
+      .set(updateData)
+      .where(eq(admin.id, adminId))
+      .returning();
+
+    if (!updatedAdmin) {
+      return c.json({ error: 'Admin not found' }, 404);
+    }
+
+    const { password, ...adminWithoutPassword } = updatedAdmin;
+
+    return c.json({ message: 'Admin updated successfully', admin: adminWithoutPassword });
+  } catch (error) {
+    console.error('Update admin error:', error);
+    return c.json({ error: 'Failed to update admin' }, 500);
+  }
+};
+
+export const deleteAdmin = async (c: Context) => {
+  try {
+    const adminId = c.req.param('id');
+
+    await db.delete(admin).where(eq(admin.id, adminId));
+
+    return c.json({ message: 'Admin deleted successfully' });
+  } catch (error) {
+    console.error('Delete admin error:', error);
+    return c.json({ error: 'Failed to delete admin' }, 500);
+  }
+};
+
+export const toggleAdminStatus = async (c: Context) => {
+  try {
+    const adminId = c.req.param('id');
+
+    const [adminUser] = await db
+      .select({ isActive: admin.isActive })
+      .from(admin)
+      .where(eq(admin.id, adminId))
+      .limit(1);
+
+    if (!adminUser) {
+      return c.json({ error: 'Admin not found' }, 404);
+    }
+
+    const [updatedAdmin] = await db
+      .update(admin)
+      .set({ 
+        isActive: !adminUser.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(admin.id, adminId))
+      .returning();
+
+    const { password, ...adminWithoutPassword } = updatedAdmin;
+
+    return c.json({ 
+      message: 'Admin status updated successfully', 
+      admin: adminWithoutPassword 
+    });
+  } catch (error) {
+    console.error(' Toggle admin status error:', error);
+    return c.json({ error: 'Failed to toggle admin status' }, 500);
   }
 };
