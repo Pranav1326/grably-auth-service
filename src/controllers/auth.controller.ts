@@ -233,3 +233,24 @@ export const getProfile = async (c: Context) => {
     return c.json({ error: 'Internal server error' }, 500);
   }
 };
+
+export const getUserEmail = async (c: Context) => {
+  try {
+    const userId = c.req.param('id');
+
+    const [user] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    return c.json({ email: user.email });
+  } catch (error) {
+    console.error('Get user email error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+}

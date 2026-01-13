@@ -5,8 +5,10 @@ import {
   refreshAccessToken,
   logout,
   getProfile,
+  getUserEmail,
 } from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth';
+import { serviceAuthMiddleware } from '../middleware/serviceAuth';
 
 const authRoutes = new Hono();
 
@@ -18,5 +20,7 @@ authRoutes.post('/logout', logout);
 
 // Protected routes
 authRoutes.get('/profile', authMiddleware, getProfile);
+
+authRoutes.get('/user-email/:id', serviceAuthMiddleware, getUserEmail);
 
 export default authRoutes;
